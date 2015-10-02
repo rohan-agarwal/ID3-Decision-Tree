@@ -32,3 +32,5 @@ def main():
     print "Number of trials: " + str(number_of_trials)
     print "Average tree accuracy: " + str(sum(tree_accuracies)/len(tree_accuracies))
     print "Average base accuracy: " + str(sum(base_accuracies)/len(base_accuracies))
+
+main()
