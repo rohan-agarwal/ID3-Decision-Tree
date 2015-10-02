@@ -13,10 +13,10 @@ class Node:
 
 
 def get_args():
-    input_file_name = sys.argv[0]
-    training_set_size = sys.argv[1]
-    number_of_trials = sys.argv[2]
-    verbose = sys.argv[3]
+    input_file_name = str(sys.argv[1])
+    training_set_size = int(sys.argv[2])
+    number_of_trials = int(sys.argv[3])
+    verbose = int(sys.argv[4])
 
     return input_file_name, training_set_size, number_of_trials, verbose
 
