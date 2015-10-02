@@ -5,15 +5,11 @@ import math
 
 
 class Node:
-    def __init__(self, attribute_name):
+    def __init__(self, attribute_name, parent):
         self.attribute_name = attribute_name
-        self.children = []
-
-    def set_name(self, name):
-        self.attribute_name = name
-
-    def add_child(self, child):
-        self.children.append(child)
+        self.parent = parent
+        self.true_child = None
+        self.false_child = None
 
 
 def get_args():
@@ -48,12 +44,19 @@ def parse_txt(input_file_name):
     return data
 
 
-def data_split(data, training_set_size):
+def train_test(data, training_set_size):
     shuffle = random.sample(data, len(data))
     train = shuffle[:training_set_size]
     test = shuffle[training_set_size:]
 
     return train, test
+
+
+def mode(data):
+    true_ct = sum([row['CLASS'] for row in data])
+    if 2*true_ct >= len(data):
+        return True
+    return False
 
 
 def ratios(data):
@@ -64,15 +67,30 @@ def ratios(data):
 
 
 def calculate_entropy(data):
+    if len(data) == 0:
+        return 0
+
     true_ratio, false_ratio = ratios(data)
-    entropy = -true_ratio * math.log(true_ratio, 2) - false_ratio * math.log(false_ratio, 2)
+
+    if true_ratio == 0:
+        entropy = 0
+    elif false_ratio == 0:
+        entropy = 0
+    else:
+        entropy = -true_ratio * math.log(true_ratio, 2) - false_ratio * math.log(false_ratio, 2)
 
     return entropy
 
 
-def calculate_gain(data, attribute, entropy_start):
+def data_split(data, attribute):
     true_data = [row for row in data if row[attribute] is True]
     false_data = [row for row in data if row[attribute] is False]
+
+    return true_data, false_data
+
+
+def calculate_gain(data, attribute, entropy_start):
+    true_data, false_data = data_split(data, attribute)
     gain = entropy_start - \
         float(len(true_data))/float(len(data)) * calculate_entropy(true_data) - \
         float(len(false_data))/float(len(data)) * calculate_entropy(false_data)
@@ -80,8 +98,11 @@ def calculate_gain(data, attribute, entropy_start):
     return gain
 
 
-def add_best(node, attributes, data):
-    att = 0
+def find_best(attributes, data):
+    if len(attributes) == 0:
+        return None
+
+    att = None
     max_gain = 0
     entropy = calculate_entropy(data)
 
@@ -91,37 +112,107 @@ def add_best(node, attributes, data):
             max_gain = gain
             att = var
 
-    new_node = Node(att)
-    node.add_child(new_node)
-    attributes.remove(att)
-    add_best(new_node, attributes, data)
+    if att is not None:
+        return att
 
 
-def id3(data, response, attributes):
+def id3(data, default, attributes, parent):
+    # Check for empty data
+    if len(data) == 0:
+        return default
+
     # Get prior probabilities
     prior_true, prior_false = ratios(data)
 
-    # Create root
-    root = Node('root')
-
     # Check for all of the data being in one class
     if prior_true == 1:
-        root.add_child(True)
-        return root
+        return True
     if prior_false == 1:
-        root.add_child(False)
-        return root
+        return False
 
-    # If there are no attributes, return the root
-    # Output is based on priors
+    # If there are no attributes, return the mode
     if len(attributes) == 0:
-        if prior_true > prior_false:
-            root.add_child(True)
-            return root
-        if prior_false > prior_true:
-            root.add_child(False)
-            return root
+        return mode(data)
+
+    # Find best attribute and create node
+    best = find_best(attributes, data)
+    if best is None:
+        return mode(data)
+    root = Node(best, parent)
+
+    # Recurse to get subtrees
+    best_true, best_false = data_split(data, best)
+    attributes.remove(best)
+    true_attributes = list(attributes)
+    false_attributes = list(attributes)
+
+    root.true_child = id3(best_true, mode(best_true), true_attributes, best)
+
+    root.false_child = id3(best_false, mode(best_false), false_attributes, best)
+
+    return root
 
 
+def predict(tree, row):
+    if tree is True:
+        return True
+    elif tree is False:
+        return False
+    elif row[tree.attribute_name] is True:
+        return predict(tree.true_child, row)
+    else:
+        return predict(tree.false_child, row)
 
-    return root_att
+
+def match_prediction(tree, row):
+    if predict(tree, row) == row['CLASS']:
+        return True
+    return False
+
+
+def tree_performance(tree, train, test):
+
+    tree_accuracy = float(sum([match_prediction(tree, row) for row in test]))/float(len(test))
+    base_accuracy = float(
+        len([row for row in test if row['CLASS'] == mode(train)]))/float(len(test))
+
+    return tree_accuracy, base_accuracy
+
+
+def print_tree_structure(root):
+    if type(root.true_child) is bool and type(root.false_child) is bool:
+        print "Attribute: " + str(root.attribute_name) + \
+            "\nParent: " + str(root.parent) + \
+            "\nTrue Child: " + str(root.true_child) + \
+            "\nFalse Child: " + str(root.false_child) + "\n"
+    elif type(root.true_child) is bool and type(root.false_child) is not bool:
+        print "Attribute: " + str(root.attribute_name) + \
+            "\nParent: " + str(root.parent) + \
+            "\nTrue Child: " + str(root.true_child) + \
+            "\nFalse Child: " + str(root.false_child.attribute_name) + "\n"
+        print_tree_structure(root.false_child)
+    elif type(root.true_child) is not bool and type(root.false_child) is bool:
+        print "Attribute: " + str(root.attribute_name) + \
+            "\nParent: " + str(root.parent) + \
+            "\nTrue Child: " + str(root.true_child.attribute_name) + \
+            "\nFalse Child: " + str(root.false_child) + "\n"
+        print_tree_structure(root.true_child)
+    elif type(root.true_child) is not bool and type(root.false_child) is not bool:
+        print "Attribute: " + str(root.attribute_name) + \
+            "\nParent: " + str(root.parent) + \
+            "\nTrue Child: " + str(root.true_child.attribute_name) + \
+            "\nFalse Child: " + str(root.false_child.attribute_name) + "\n"
+        print_tree_structure(root.true_child)
+        print_tree_structure(root.false_child)
+
+
+def verbose_print(train, test, tree):
+    print "Training Data:\n"
+    for row in train:
+        print row
+
+    print "Testing Data:\n"
+    for row in test:
+        print row
+        print "Tree Classification: " + str(predict(tree, row))
+        print "Prior Classification: " + str(mode(train)) + "\n"
